@@ -1,0 +1,23 @@
+---
+title: "Project"
+output: html_notebook
+---
+# Loading the data
+```{r}
+carbonData<-read.csv('/Users/angadsingh/Downloads/Carbon Emission.csv')
+summary(carbonData)
+```
+
+```{r}
+str(carbonData)
+```
+From the str of carbon data i can see that i am having empty vehicle types as "" so i will replace them with No vehicle
+```{r}
+carbonData<- carbonData %>% mutate(Vehicle.Type=ifelse(Vehicle.Type=="","No vehicle",Vehicle.Type))
+str(carbonData)
+```
+```{r}
+carbonData[carbonData == ""]<-NA
+colSums(is.na(carbonData))
+```
+
