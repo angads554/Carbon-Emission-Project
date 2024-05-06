@@ -25,6 +25,7 @@ colSums(is.na(carbonData))
 
 
 ```{r}
+library(dplyr)
 carbonData<-carbonData %>%
   mutate_if(is.character, as.factor)%>%
   mutate_if(is.integer, as.numeric)
@@ -137,6 +138,51 @@ carbonTestData
 
 carbonTestLabels<-carbonTestData$CarbonEmission
 ```
+#Benchmark
+```{r}
+
+meanTransport<- carbonTrainData %>% #this will calculate emission per transport type 
+  group_by(Transport) %>%
+  summarize(meanEmission= mean(CarbonEmission, na.rm = TRUE))
+
+meanTransportTable<-setNames(meanTransport$meanEmission,meanTransport$Transport)  # will store transport levels to its average emission
+
+predictTransport<-function(row){
+  transportType<-as.character(row["Transport"])
+  if(transportType %in% names(meanTransportTable)){
+    return(meanTransportTable[[transportType]])
+  }
+}
+
+benchmarkPred<-apply(carbonTestData,1,predictTransport) # will apply predictTransport function on the test data
+
+
+rmse(benchmarkPred,carbonTestData$CarbonEmission)
+MAE(benchmarkPred,carbonTestData$CarbonEmission)
+rsquaredNew<-sum((benchmarkPred-carbonTestData$CarbonEmission)^2)/sum((carbonTestData$CarbonEmission-mean(carbonTestData$CarbonEmission))^2)
+rsquaredNew
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```{r}
 knnModel<-train(CarbonEmission~.,data = carbonTrainData, method="knn", trControl=trainControl(method = "cv", number=5))
 ```
