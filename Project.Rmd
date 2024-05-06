@@ -22,52 +22,7 @@ str(carbonData)
 #carbonData[carbonData == ""]<-NA
 colSums(is.na(carbonData))
 ```
-```{r}
-library(tidyverse)
-parseList<-function(x){
-  str_remove_all(x,"\\[|\\]|'")%>%
-    strsplit(", ")%>%
-    unlist()
-}
-carbonData$Recycling<-sapply(carbonData$Recycling,parseList)
-carbonData$Cooking_With<-sapply(carbonData$Cooking_With,parseList)
 
-carbonData$Recycling<-sapply(carbonData$Recycling,paste,collapse=",")
-carbonData$Cooking_With<-sapply(carbonData$Cooking_With,paste,collapse=",")
-
-#str(carbonData)
-
-dummies<-function(col){
-
-  items<-unlist(str_split(col,","))
-  items<-trimws(items)
-  items<-items[items != ""]
-  
-  uniqueItems<-unique(items)
-  dummyDataFrame<-data.frame(matrix(0,nrow = length(col),ncol = length(uniqueItems)))
-  colnames(dummyDataFrame)<-uniqueItems
-  
-  for (i in seq_along(col)) {
-    rowItems<-unlist(str_split(col[i],","))%>%
-    map_chr(~str_trim(.))%>%
-    discard(~.=="")
-    
-    rowItems<-rowItems[rowItems %in% uniqueItems]
-    dummyDataFrame[i,rowItems]<-1
-  }
-  return(dummyDataFrame)
-}
-
-recyclingDummies<-dummies(carbonData$Recycling)
-cookingDummies<-dummies(carbonData$Cooking_With)
-
-carbonData<-cbind(carbonData,recyclingDummies,cookingDummies)
-
-carbonData$Recycling<- NULL
-carbonData$Cooking_With<-NULL
-
-str(carbonData)
-```
 
 ```{r}
 carbonData<-carbonData %>%
@@ -119,6 +74,54 @@ for (c in colnames(carbonData[,-carbonIndices])) {
   }
   
 }
+```
+
+
+```{r}
+library(tidyverse)
+parseList<-function(x){
+  str_remove_all(x,"\\[|\\]|'")%>%
+    strsplit(", ")%>%
+    unlist()
+}
+carbonData$Recycling<-sapply(carbonData$Recycling,parseList)
+carbonData$Cooking_With<-sapply(carbonData$Cooking_With,parseList)
+
+carbonData$Recycling<-sapply(carbonData$Recycling,paste,collapse=",")
+carbonData$Cooking_With<-sapply(carbonData$Cooking_With,paste,collapse=",")
+
+#str(carbonData)
+
+dummies<-function(col){
+
+  items<-unlist(str_split(col,","))
+  items<-trimws(items)
+  items<-items[items != ""]
+  
+  uniqueItems<-unique(items)
+  dummyDataFrame<-data.frame(matrix(0,nrow = length(col),ncol = length(uniqueItems)))
+  colnames(dummyDataFrame)<-uniqueItems
+  
+  for (i in seq_along(col)) {
+    rowItems<-unlist(str_split(col[i],","))%>%
+    map_chr(~str_trim(.))%>%
+    discard(~.=="")
+    
+    rowItems<-rowItems[rowItems %in% uniqueItems]
+    dummyDataFrame[i,rowItems]<-1
+  }
+  return(dummyDataFrame)
+}
+
+recyclingDummies<-dummies(carbonData$Recycling)
+cookingDummies<-dummies(carbonData$Cooking_With)
+
+carbonData<-cbind(carbonData,recyclingDummies,cookingDummies)
+
+carbonData$Recycling<- NULL
+carbonData$Cooking_With<-NULL
+
+str(carbonData)
 ```
 
 ```{r}
