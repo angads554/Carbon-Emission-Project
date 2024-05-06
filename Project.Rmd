@@ -13,11 +13,488 @@ str(carbonData)
 ```
 From the str of carbon data i can see that i am having empty vehicle types as "" so i will replace them with No vehicle
 ```{r}
-carbonData<- carbonData %>% mutate(Vehicle.Type=ifelse(Vehicle.Type=="","No vehicle",Vehicle.Type))
+
+carbonData$Vehicle.Type[carbonData$Transport=='public'|carbonData$Transport=='walk/bicycle']<-'FuelEfficient'
+#carbonData<- carbonData %>% mutate(Vehicle.Type=ifelse(Vehicle.Type=="","No vehicle",Vehicle.Type))
 str(carbonData)
 ```
 ```{r}
-carbonData[carbonData == ""]<-NA
+#carbonData[carbonData == ""]<-NA
 colSums(is.na(carbonData))
+```
+```{r}
+library(tidyverse)
+parseList<-function(x){
+  str_remove_all(x,"\\[|\\]|'")%>%
+    strsplit(", ")%>%
+    unlist()
+}
+carbonData$Recycling<-sapply(carbonData$Recycling,parseList)
+carbonData$Cooking_With<-sapply(carbonData$Cooking_With,parseList)
+
+carbonData$Recycling<-sapply(carbonData$Recycling,paste,collapse=",")
+carbonData$Cooking_With<-sapply(carbonData$Cooking_With,paste,collapse=",")
+
+#str(carbonData)
+
+dummies<-function(col){
+
+  items<-unlist(str_split(col,","))
+  items<-trimws(items)
+  items<-items[items != ""]
+  
+  uniqueItems<-unique(items)
+  dummyDataFrame<-data.frame(matrix(0,nrow = length(col),ncol = length(uniqueItems)))
+  colnames(dummyDataFrame)<-uniqueItems
+  
+  for (i in seq_along(col)) {
+    rowItems<-unlist(str_split(col[i],","))%>%
+    map_chr(~str_trim(.))%>%
+    discard(~.=="")
+    
+    rowItems<-rowItems[rowItems %in% uniqueItems]
+    dummyDataFrame[i,rowItems]<-1
+  }
+  return(dummyDataFrame)
+}
+
+recyclingDummies<-dummies(carbonData$Recycling)
+cookingDummies<-dummies(carbonData$Cooking_With)
+
+carbonData<-cbind(carbonData,recyclingDummies,cookingDummies)
+
+carbonData$Recycling<- NULL
+carbonData$Cooking_With<-NULL
+
+str(carbonData)
+```
+
+```{r}
+carbonData<-carbonData %>%
+  mutate_if(is.character, as.factor)%>%
+  mutate_if(is.integer, as.numeric)
+
+str(carbonData)
+summary(carbonData)
+```
+
+```{r}
+table(carbonData$Body.Type)
+table(carbonData$Sex)
+table(carbonData$Diet)
+table(carbonData$How.Often.Shower)
+table(carbonData$Heating.Energy.Source)
+table(carbonData$Transport)
+table(carbonData$Social.Activity)
+table(carbonData$Frequency.of.Traveling.by.Air)
+table(carbonData$Waste.Bag.Size)
+table(carbonData$Energy.efficiency)
+```
+
+
+```{r}
+hist(carbonData$CarbonEmission)
+carbonData$CarbonEmission<-log(carbonData$CarbonEmission) 
+hist(carbonData$CarbonEmission)
+```
+
+```{r}
+carbonIndices<-which(names(carbonData)=='CarbonEmission')
+for (c in colnames(carbonData[,-carbonIndices])) {
+  if(is.factor(carbonData[,c])){
+    try({
+        anovaaResult<-aov(carbonData$CarbonEmission~carbonData[,c])
+        cat("ANOVA of ",c, "and CarbonEmission", "\n")
+        print(summary(anovaaResult))
+        boxplot(carbonData$CarbonEmission~carbonData[,c],shade=TRUE, main = paste("Carbon Emission vs", c), xlab ="CarbonEmission", ylab=c ,col="lightgreen")
+        
+      })
+  }
+  else if (is.numeric(carbonData[,c])){
+    try({
+      corTest<-cor.test(carbonData$CarbonEmission,carbonData[,c], method = "pearson")
+      cat("p.value of ",c, "and Carbon Emission", corTest$p.value, "\n")
+      plot(carbonData$CarbonEmission,carbonData[,c], main = paste("Carbon Emission vs", c), xlab ="Carbon Emission", ylab=c)
+    })
+  }
+  
+}
+```
+
+```{r}
+library(caret)
+
+carbonDataIndexs <- createDataPartition(carbonData$CarbonEmission, p=0.8, list=FALSE)
+
+carbonTrainData<-carbonData[carbonDataIndexs,]
+carbonTrainData
+
+carbonTestData<-carbonData[-carbonDataIndexs,]
+carbonTestData
+
+carbonTestLabels<-carbonTestData$CarbonEmission
+```
+```{r}
+knnModel<-train(CarbonEmission~.,data = carbonTrainData, method="knn", trControl=trainControl(method = "cv", number=5))
+```
+```{r}
+knnModel
+```
+```{r}
+knnPred<-predict(knnModel,newdata = carbonTestData)
+
+rmse=function(x,y){
+  return((mean(x-y)^2)^0.5)
+}
+rmse(knnPred,carbonTestLabels)
+```
+```{r}
+lmModel<-train(CarbonEmission~.,data = carbonTrainData, method="lm", trControl=trainControl(method = "cv", number=5))
+lmModel
+```
+```{r}
+summary(lmModel)
+```
+```{r}
+stepwiseModel<-train(CarbonEmission~.,data = carbonTrainData, method="leapBackward", trControl=trainControl(method = "cv", number=5))
+stepwiseModel
+```
+```{r}
+summary(stepwiseModel$finalModel)
+```
+```{r}
+colSums(is.na(carbonTrainData))
+```
+
+
+#Lasso Model
+```{r}
+library(glmnet)
+set.seed(1)
+lassoModel<-train(CarbonEmission~.,data = carbonTrainData,method="glmnet",trControl= trainControl(method = "cv", number=5), tuneGrid = expand.grid(alpha=1, lambda=10^seq(-3,3,length=100))) 
+
+lassoModel
+
+
+lassoLambda<-lassoModel$bestTune$lambda
+lassoPredictor<- setdiff(names(carbonTrainData),"CarbonEmission")
+lassoFinalModel<-glmnet(as.matrix(carbonTrainData[,lassoPredictor]),carbonTrainData[,"CarbonEmission"],alpha = 1,lambda = lassoLambda, family = "gaussian")
+
+coeff<-coef(lassoFinalModel)
+coeff
+
+zeroCoeff<-coeff==0
+zeroCoeff
+```
+```{r}
+plot(lassoModel)
+```
+
+
+#Ridge Model
+```{r}
+set.seed(1)
+ridgeModel<-train(CarbonEmission~.,data = carbonTrainData,method="glmnet",trControl= trainControl(method = "cv", number=5), tuneGrid = expand.grid(alpha=0, lambda=10^seq(-3,3,length=100))) 
+
+ridgeModel
+
+ridgeLambda<-ridgeModel$bestTune$lambda
+ridgePredictor<- setdiff(names(carbonTrainData),"CarbonEmission")
+ridgeFinalModel<-glmnet(as.matrix(carbonTrainData[,ridgePredictor]),carbonTrainData[,"CarbonEmission"],alpha = 1,lambda = ridgeLambda, family = "gaussian")
+
+ridgeFinalModel
+```
+```{r}
+plot(ridgeModel)
+```
+```{r}
+set.seed(1)
+enetModel<-train(CarbonEmission~., data = carbonTrainData, method = "glmnet", trControl=trainControl(method="cv",number=5,preProc="nzv"),tuneGrid=expand.grid(alpha=seq(0,1,length=10),lambda=10^seq(-3,1,length=100)))
+
+enetModel
+
+enetModel$bestTune
+```
+```{r}
+enetLambda<-enetModel$bestTune$lambda
+enetAlpha<-enetModel$bestTune$alpha
+
+enetPredector<-setdiff(names(carbonTrainData),"CarbonEmission")
+
+enetFinalModel<-glmnet(as.matrix(carbonTrainData[,enetPredector]),carbonTrainData[,"CarbonEmission"], alpha = enetAlpha,lambda = enetLambda, family = "gaussian")
+
+enetFinalModel
+```
+#Random Forest Model
+```{r}
+library(randomForest)
+set.seed(1)
+randomForestModel<-randomForest(CarbonEmission~.,data = carbonTrainData)
+randomForestModel
+```
+
+
+
+```{r}
+mRf<-train(CarbonEmission~.,
+           data=carbonTrainData,
+           method="rf",
+           trControl=trainControl(method = "cv", number =5)
+           )
+```
+
+```{r}
+mRf
+varImp(mRf)
+```
+```{r}
+rfPred<-predict(mRf,newdata = carbonTestData)
+
+MAE(carbonTestData$CarbonEmission,rfPred)
+rmse(carbonTestData$CarbonEmission,rfPred)
+cor(carbonTestData$CarbonEmission,rfPred)^2
+```
+
+```{r}
+plot(carbonTestData$CarbonEmission,rfPred)
+```
+# GBM
+```{r}
+set.seed(1)
+
+grBoostedTree<-train(
+  CarbonEmission~.,
+  data = carbonTrainData,
+  method="gbm",
+  trControl=trainControl(method = "cv",number = 5)
+)
+```
+```{r}
+grBoostedTree
+
+gbmPred<-predict(grBoostedTree, carbonTestData)
+```
+```{r}
+MAE(carbonTestData$CarbonEmission,gbmPred)
+rmse(carbonTestData$CarbonEmission,gbmPred)
+cor(carbonTestData$CarbonEmission,gbmPred)^2
+```
+```{r}
+plot(carbonTestData$CarbonEmission,gbmPred)
+```
+#SV Linear Model
+```{r}
+set.seed(1)
+
+svmLinear<-train(
+  CarbonEmission~.,
+  data = carbonTrainData,
+  method="svmLinear",
+  trControl=trainControl(method = "cv",number = 5, preProc=c("center","scale"))
+)
+```
+```{r}
+svmLinear
+
+svmPred<-predict(svmLinear,carbonTestData)
+
+plot(svmPred,carbonTestData$CarbonEmission)
+```
+#SVM Radial Model
+```{r}
+set.seed(1)
+
+svmRadial<-train(
+  CarbonEmission~.,
+  data = carbonTrainData,
+  method="svmRadial",
+  trControl=trainControl(method = "cv",number = 5, preProc=c("center","scale"))
+)
+```
+
+```{r}
+svmRadial
+
+svmRadialPred<-predict(svmRadial,carbonTestData)
+
+plot(svmRadialPred,carbonTestData$CarbonEmission)
+```
+#Comparing models 
+```{r}
+compare=resamples(list(KNN=knnModel,LIN=lmModel,stepWise=stepwiseModel,Lasso=lassoModel,Ridge=ridgeModel,Enet=enetModel,RF=mRf,GBM=grBoostedTree,SVML=svmLinear,SVMR=svmRadial))
+summary(compare) # Out of all the models SVM Radial stands out the most
+```
+
+# Neural Network Preprocessing
+```{r}
+library(caret)
+carbonInd<-createDataPartition(carbonTrainData$CarbonEmission,p=0.9,list = FALSE)
+carbonIndex<-which(names(carbonTrainData)=='CarbonEmission')
+
+carbonTrainingData<-carbonTrainData[carbonInd,-carbonIndex]
+str(carbonTrainingData)
+
+carbonTrainingLabels<-carbonTrainData[carbonInd,carbonIndex]
+str(carbonTrainingLabels)
+
+carbonValidationData<-carbonTrainData[-carbonInd,-carbonIndex]
+carbonValidationData
+
+carbonValidationLabels<-carbonTrainData[-carbonInd,carbonIndex]
+str(carbonValidationLabels)
+
+carbonTestingData<-carbonTestData[,-carbonIndex]
+carbonTestingData
+
+carbonTestingLabels<-carbonTestData[,carbonIndex]
+str(carbonTestingLabels)
+```
+```{r}
+dim(carbonTrainingData)
+dim(carbonTestingData)
+```
+
+
+#Scaling numeric Variables and one hot encoding categorical variables
+```{r}
+library(mltools)
+library(data.table)
+numericCols<-c("Monthly.Grocery.Bill","Vehicle.Monthly.Distance.Km","Waste.Bag.Weekly.Count",
+               "How.Long.TV.PC.Daily.Hour","How.Many.New.Clothes.Monthly","How.Long.Internet.Daily.Hour","Metal","Paper","Plastic","Glass","Stove","Oven"
+               ,"Microwave","Grill","Airfryer")
+
+categoricalCols<-c("Body.Type","Sex","Diet","How.Often.Shower","Heating.Energy.Source","Transport","Vehicle.Type","Social.Activity",
+                   "Frequency.of.Traveling.by.Air","Waste.Bag.Size","Energy.efficiency")
+
+carbonTrainingDataNew<-scale(carbonTrainingData[,numericCols])
+colMeanTrain<-attr(carbonTrainingDataNew,"scaled:center")
+colStddevsTrain<-attr(carbonTrainingDataNew,"scaled:scale")
+
+
+carbonTrainingData[,numericCols]<-carbonTrainingDataNew
+carbonValidationData[,numericCols]<-scale(carbonValidationData[,numericCols],center = colMeanTrain,scale = colStddevsTrain)
+carbonTestingData[,numericCols]<-scale(carbonTestingData[,numericCols],center = colMeanTrain,scale = colStddevsTrain)
+
+carbonTrainingTable<-as.data.table(carbonTrainingData)
+carbonValidationTable<-as.data.table(carbonValidationData)
+carbonTestingTable<-as.data.table(carbonTestingData)
+
+carbonTrainingOneHot<-one_hot(carbonTrainingTable,naCols=FALSE,dropCols=TRUE,dropUnusedLevels=TRUE)
+carbonTrainingOneHot
+
+carbonValidationOneHot<-one_hot(carbonValidationTable,naCols=FALSE,dropCols=TRUE,dropUnusedLevels=TRUE)
+carbonValidationOneHot
+
+carbonTestingOneHot<-one_hot(carbonTestingTable,naCols=FALSE,dropCols=TRUE,dropUnusedLevels=TRUE)
+carbonTestingOneHot
+
+carbonTrainingFinal<-as.data.frame(cbind(carbonTrainingTable[, ..numericCols], carbonTrainingOneHot))
+carbonTrainingFinal
+
+carbonValidationFinal<-as.data.frame(cbind(carbonValidationTable[, ..numericCols], carbonValidationOneHot))
+carbonValidationFinal
+
+carbonTestingFinal<-as.data.frame(cbind(carbonTestingTable[, ..numericCols], carbonTestingOneHot))
+carbonTestingFinal
+```
+```{r}
+library(keras)
+
+model<-keras_model_sequential()%>%
+  layer_dense(units = 32,activation = "relu",input_shape = dim(carbonTrainingFinal)[2])%>%
+  layer_dropout(rate=0.3)%>%
+  layer_dense(units = 32,activation = "relu")%>%
+  layer_dropout(rate=0.3)%>%
+  layer_dense(units = 16,activation = "relu")%>%
+  layer_dropout(rate=0.3)%>%
+  layer_dense(units = 1)
+
+model %>% compile(
+  loss="mse",
+  optimizer=optimizer_adam(lr=0.001)
+)
+
+history<-model %>% fit(as.matrix(carbonTrainingFinal),
+                       carbonTrainingLabels,
+                       batch_size=50,
+                       epochs=20,
+                       validation_data=list(as.matrix(carbonValidationFinal),carbonValidationLabels)
+                         )
+```
+```{r}
+kerasPrediction<-model %>% predict(as.matrix(carbonTestingFinal))
+
+rmse=function(x,y){
+  return((mean(x-y)^2)^0.5)
+}
+
+rmse(kerasPrediction,carbonTestLabels)
+MAE(kerasPrediction,carbonTestLabels)
+rsquared<-sum((kerasPrediction-carbonTestLabels)^2)/sum((carbonTestLabels-mean(carbonTestLabels))^2)
+rsquared
+```
+```{r}
+library(tfruns)
+runs<-tuning_run(
+  "carbonEmission.R",
+  flags=list(
+    learning_rate=c(0.1,0.5,0.01,0.001),
+    nodes=c(8,16,32,64,128),
+    batch_size=c(16,32,64,128),
+    dropout=c(0.1,0.2,0.3,0.4,0.5),
+    activation=c("relu")
+  ),sample=0.05
+)
+```
+
+# Runs
+```{r}
+runs=runs[order(runs$metric_val_loss),]
+runs
+view_run(runs$run_dir[1])
+```
+```{r}
+dim(carbonTrainingFinal)
+dim(carbonValidationFinal)
+carbonTrainingFinal<-rbind(carbonTrainingFinal,carbonValidationFinal)
+carbonTrainingLabels<-c(carbonTrainingLabels,carbonValidationLabels)
+dim(carbonTrainingFinal)
+```
+
+
+```{r}
+BestModel<-keras_model_sequential()%>%
+  layer_dense(units = 64,activation = "relu",input_shape = dim(carbonTrainingFinal)[2])%>%
+  layer_dropout(rate=0.1)%>%
+  layer_dense(units = 64,activation = "relu")%>%
+  layer_dropout(rate=0.1)%>%
+  layer_dense(units = 64,activation = "relu")%>%
+  layer_dropout(rate=0.1)%>%
+  layer_dense(units = 1)
+
+BestModel %>% compile(
+  loss="mse",
+  optimizer=optimizer_adam(lr=0.001)
+)
+
+history<-BestModel %>% fit(as.matrix(carbonTrainingFinal),
+                       carbonTrainingLabels,
+                       batch_size=128,
+                       epochs=20,
+                       validation_data=list(as.matrix(carbonTestingFinal),carbonTestingLabels)
+                         )
+```
+```{r}
+predictBestModel<-model %>% predict(as.matrix(carbonTestingFinal))
+```
+```{r}
+rmse=function(x,y){
+  return((mean(x-y)^2)^0.5)
+}
+
+rmse(predictBestModel,carbonTestingLabels)
+MAE(predictBestModel,carbonTestingLabels)
+rsquaredBest<-sum((predictBestModel-carbonTestingLabels)^2)/sum((carbonTestingLabels-mean(carbonTestingLabels))^2)
+rsquaredBest
 ```
 

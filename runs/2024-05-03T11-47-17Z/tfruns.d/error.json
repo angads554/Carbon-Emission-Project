@@ -1,0 +1,4 @@
+{
+  "message": "The following flags were provided but not declared: dropout",
+  "traceback": ["stop(\"The following flags were provided but not declared: \", \n    paste(undeclared, collapse = \", \"), call. = FALSE)", "parse_flags(FLAGS, config, file, arguments)", "flags(flag_numeric(\"nodes\", 32), flag_numeric(\"batch_size\", 32), \n    flag_string(\"activation\", \"relu\"), flag_numeric(\"learning_rate\", \n        0.01), flag_numeric(\"dropoutRate\", 0.2))", "eval(ei, envir)", "eval(ei, envir)", "withVisible(eval(ei, envir))", "tuning_run(\"carbonEmission.R\", flags = list(learning_rate = c(0.1, \n    0.5, 0.01, 0.001), nodes = c(8, 16, 32, 64, 128), batch_size = c(16, \n    32, 64, 128), dropout = c(0.1, 0.2, 0.3, 0.4, 0.5), activation = c(\"relu\")), \n    sample = 0.05)"]
+}

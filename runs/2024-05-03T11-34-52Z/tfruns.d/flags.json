@@ -1,0 +1,7 @@
+{
+  "nodes": 8,
+  "batch_size": 16,
+  "activation": "tanh",
+  "learning_rate": 0.01,
+  "dropoutRate": 0.2
+}

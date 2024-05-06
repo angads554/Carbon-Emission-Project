@@ -1,0 +1,6 @@
+
+> FLAGS<- flags(
++   flag_numeric("nodes", 32),
++   flag_numeric("batch_size",32),
++   flag_string("activation","relu"),
++   flag_numeric("learning_ra ..." ... [TRUNCATED] 
