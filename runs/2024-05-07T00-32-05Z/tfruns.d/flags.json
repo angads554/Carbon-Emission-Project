@@ -1,0 +1,9 @@
+{
+  "nodes1": 8,
+  "nodes2": 16,
+  "nodes3": 32,
+  "batch_size": 128,
+  "activation": "relu",
+  "learning_rate": 0.5,
+  "dropout": 0.4
+}

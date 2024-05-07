@@ -1,0 +1,23 @@
+
+> FLAGS<- flags(
++   flag_numeric("nodes1", 32),
++   flag_numeric("nodes2", 32),
++   flag_numeric("nodes3", 32),
++   flag_numeric("batch_size",32),
++  .... [TRUNCATED] 
+
+> model = keras_model_sequential()
+
+> model %>%
++   layer_dense(units = FLAGS$nodes1, activation = FLAGS$activation, input_shape = dim(carbonTrainingFinal)[2]) %>%
++   layer_dropout(rate .... [TRUNCATED] 
+
+> model %>% compile(
++   loss="mse",
++   optimizer=optimizer_adam(lr=FLAGS$learning_rate)
++ )
+
+> model %>%fit(  as.matrix(carbonTrainingFinal),
++                carbonTrainingLabels,
++                batch_size=FLAGS$batch_size,
++                .... [TRUNCATED] 

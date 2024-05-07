@@ -1,5 +1,7 @@
 FLAGS<- flags(
-  flag_numeric("nodes", 32),
+  flag_numeric("nodes1", 32),
+  flag_numeric("nodes2", 32),
+  flag_numeric("nodes3", 32),
   flag_numeric("batch_size",32),
   flag_string("activation","relu"),
   flag_numeric("learning_rate",0.01),
@@ -9,11 +11,11 @@ FLAGS<- flags(
 model = keras_model_sequential()
 
 model %>%
-  layer_dense(units = FLAGS$nodes, activation = FLAGS$activation, input_shape = dim(carbonTrainingFinal)[2]) %>%
+  layer_dense(units = FLAGS$nodes1, activation = FLAGS$activation, input_shape = dim(carbonTrainingFinal)[2]) %>%
   layer_dropout(rate=FLAGS$dropout)%>%
-  layer_dense(units = FLAGS$nodes, activation = FLAGS$activation) %>%
+  layer_dense(units = FLAGS$nodes2, activation = FLAGS$activation) %>%
   layer_dropout(rate=FLAGS$dropout)%>%
-  layer_dense(units = FLAGS$nodes, activation = FLAGS$activation) %>%
+  layer_dense(units = FLAGS$nodes3, activation = FLAGS$activation) %>%
   layer_dropout(rate=FLAGS$dropout)%>%
   layer_dense(units = 1)
 

@@ -34,6 +34,10 @@ str(carbonData)
 summary(carbonData)
 ```
 
+
+
+
+
 ```{r}
 table(carbonData$Body.Type)
 table(carbonData$Sex)
@@ -53,7 +57,6 @@ hist(carbonData$CarbonEmission)
 carbonData$CarbonEmission<-log(carbonData$CarbonEmission) 
 hist(carbonData$CarbonEmission)
 ```
-
 ```{r}
 carbonIndices<-which(names(carbonData)=='CarbonEmission')
 for (c in colnames(carbonData[,-carbonIndices])) {
@@ -77,16 +80,20 @@ for (c in colnames(carbonData[,-carbonIndices])) {
 }
 ```
 
-
 ```{r}
 library(tidyverse)
-parseList<-function(x){
-  str_remove_all(x,"\\[|\\]|'")%>%
+parseList<-function(x,emptyLable){
+  parsedItem<-str_remove_all(x,"\\[|\\]|'")%>%
     strsplit(", ")%>%
     unlist()
+  
+  if(length(parsedItem)==0||all(parsedItem=="")){
+    parsedItem<-emptyLable
+  }
+  return(parsedItem)
 }
-carbonData$Recycling<-sapply(carbonData$Recycling,parseList)
-carbonData$Cooking_With<-sapply(carbonData$Cooking_With,parseList)
+carbonData$Recycling<-sapply(carbonData$Recycling,parseList,emptyLable="No_Recycling")
+carbonData$Cooking_With<-sapply(carbonData$Cooking_With,parseList,emptyLable="No_Cooking")
 
 carbonData$Recycling<-sapply(carbonData$Recycling,paste,collapse=",")
 carbonData$Cooking_With<-sapply(carbonData$Cooking_With,paste,collapse=",")
@@ -99,7 +106,7 @@ dummies<-function(col){
   items<-trimws(items)
   items<-items[items != ""]
   
-  uniqueItems<-unique(items)
+  uniqueItems<-unique(c(items))
   dummyDataFrame<-data.frame(matrix(0,nrow = length(col),ncol = length(uniqueItems)))
   colnames(dummyDataFrame)<-uniqueItems
   
@@ -117,6 +124,7 @@ dummies<-function(col){
 recyclingDummies<-dummies(carbonData$Recycling)
 cookingDummies<-dummies(carbonData$Cooking_With)
 
+
 carbonData<-cbind(carbonData,recyclingDummies,cookingDummies)
 
 carbonData$Recycling<- NULL
@@ -124,6 +132,7 @@ carbonData$Cooking_With<-NULL
 
 str(carbonData)
 ```
+
 
 ```{r}
 library(caret)
@@ -140,7 +149,6 @@ carbonTestLabels<-carbonTestData$CarbonEmission
 ```
 #Benchmark
 ```{r}
-
 meanTransport<- carbonTrainData %>% #this will calculate emission per transport type 
   group_by(Transport) %>%
   summarize(meanEmission= mean(CarbonEmission, na.rm = TRUE))
@@ -162,27 +170,7 @@ MAE(benchmarkPred,carbonTestData$CarbonEmission)
 rsquaredNew<-sum((benchmarkPred-carbonTestData$CarbonEmission)^2)/sum((carbonTestData$CarbonEmission-mean(carbonTestData$CarbonEmission))^2)
 rsquaredNew
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#KNN Model
 ```{r}
 knnModel<-train(CarbonEmission~.,data = carbonTrainData, method="knn", trControl=trainControl(method = "cv", number=5))
 ```
@@ -211,10 +199,6 @@ stepwiseModel
 ```{r}
 summary(stepwiseModel$finalModel)
 ```
-```{r}
-colSums(is.na(carbonTrainData))
-```
-
 
 #Lasso Model
 ```{r}
@@ -256,6 +240,8 @@ ridgeFinalModel
 ```{r}
 plot(ridgeModel)
 ```
+
+#Elastic Net Model
 ```{r}
 set.seed(1)
 enetModel<-train(CarbonEmission~., data = carbonTrainData, method = "glmnet", trControl=trainControl(method="cv",number=5,preProc="nzv"),tuneGrid=expand.grid(alpha=seq(0,1,length=10),lambda=10^seq(-3,1,length=100)))
@@ -274,6 +260,12 @@ enetFinalModel<-glmnet(as.matrix(carbonTrainData[,enetPredector]),carbonTrainDat
 
 enetFinalModel
 ```
+
+```{r}
+carbonTrainData$`No Recycling`
+```
+
+
 #Random Forest Model
 ```{r}
 library(randomForest)
@@ -281,8 +273,6 @@ set.seed(1)
 randomForestModel<-randomForest(CarbonEmission~.,data = carbonTrainData)
 randomForestModel
 ```
-
-
 
 ```{r}
 mRf<-train(CarbonEmission~.,
@@ -410,7 +400,7 @@ library(mltools)
 library(data.table)
 numericCols<-c("Monthly.Grocery.Bill","Vehicle.Monthly.Distance.Km","Waste.Bag.Weekly.Count",
                "How.Long.TV.PC.Daily.Hour","How.Many.New.Clothes.Monthly","How.Long.Internet.Daily.Hour","Metal","Paper","Plastic","Glass","Stove","Oven"
-               ,"Microwave","Grill","Airfryer")
+               ,"Microwave","Grill","Airfryer","No_Cooking","No_Recycling")
 
 categoricalCols<-c("Body.Type","Sex","Diet","How.Often.Shower","Heating.Energy.Source","Transport","Vehicle.Type","Social.Activity",
                    "Frequency.of.Traveling.by.Air","Waste.Bag.Size","Energy.efficiency")
@@ -488,11 +478,13 @@ runs<-tuning_run(
   "carbonEmission.R",
   flags=list(
     learning_rate=c(0.1,0.5,0.01,0.001),
-    nodes=c(8,16,32,64,128),
+    nodes1=c(8,16,32,64,128),
+    nodes2=c(8,16,32,64,128),
+    nodes3=c(8,16,32,64,128),
     batch_size=c(16,32,64,128),
     dropout=c(0.1,0.2,0.3,0.4,0.5),
     activation=c("relu")
-  ),sample=0.05
+  ),sample=0.001
 )
 ```
 
@@ -513,12 +505,12 @@ dim(carbonTrainingFinal)
 
 ```{r}
 BestModel<-keras_model_sequential()%>%
-  layer_dense(units = 64,activation = "relu",input_shape = dim(carbonTrainingFinal)[2])%>%
-  layer_dropout(rate=0.1)%>%
-  layer_dense(units = 64,activation = "relu")%>%
-  layer_dropout(rate=0.1)%>%
-  layer_dense(units = 64,activation = "relu")%>%
-  layer_dropout(rate=0.1)%>%
+  layer_dense(units = 128,activation = "relu",input_shape = dim(carbonTrainingFinal)[2])%>%
+  layer_dropout(rate=0.3)%>%
+  layer_dense(units = 8,activation = "relu")%>%
+  layer_dropout(rate=0.3)%>%
+  layer_dense(units = 128,activation = "relu")%>%
+  layer_dropout(rate=0.3)%>%
   layer_dense(units = 1)
 
 BestModel %>% compile(
